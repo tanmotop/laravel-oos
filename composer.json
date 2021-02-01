@@ -1,0 +1,28 @@
+{
+    "name": "tanmo/laravel-oos",
+    "description": "laravel oos client",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tanmo",
+            "email": "410536770@qq.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "tanmo/oos-php-sdk": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tanmo\\CtyunOOS\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Tanmo\\CtyunOOS\\CtyunOosServiceProvider"
+            ]
+        }
+    }
+}
