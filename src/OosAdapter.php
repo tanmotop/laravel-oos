@@ -572,7 +572,7 @@ class OosAdapter extends AbstractAdapter
     {
         $metadata = $this->getVisibility($path);
 
-        return $metadata['visibility'] === AdapterInterface::VISIBILITY_PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
+        return is_array($metadata) && $metadata['visibility'] === AdapterInterface::VISIBILITY_PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
     }
 
     /**
