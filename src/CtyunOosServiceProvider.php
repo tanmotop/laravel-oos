@@ -4,11 +4,11 @@
 namespace Tanmo\CtyunOOS;
 
 
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use League\Flysystem\Filesystem;
-use Tanmo\OOS\Core\OosException;
 use Tanmo\OOS\OosClient;
 
 class CtyunOosServiceProvider extends ServiceProvider
@@ -17,7 +17,6 @@ class CtyunOosServiceProvider extends ServiceProvider
      * Perform post-registration booting of services.
      *
      * @return void
-     * @throws OosException
      */
     public function boot()
     {
@@ -40,7 +39,7 @@ class CtyunOosServiceProvider extends ServiceProvider
             $client  = new OosClient($accessId, $accessKey, $epInternal, false); // isCName 这里值为false的原因是，辣鸡电信云不支持CName绑定，只能自己搞转发
             $adapter = new OosAdapter($client, $bucket, $endPoint, $ssl, $cdnDomain, $isCname, $debug, null, $options);
 
-            return new Filesystem($adapter);
+            return new FilesystemAdapter(new Filesystem($adapter), $adapter, $config);
         });
     }
 

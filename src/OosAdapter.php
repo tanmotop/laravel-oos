@@ -2,20 +2,18 @@
 
 namespace Tanmo\CtyunOOS;
 
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\Visibility;
+use Tanmo\CtyunOOS\Exceptions\CtyunFileException;
 use Tanmo\OOS\Core\OosException;
-use League\Flysystem\Adapter\AbstractAdapter;
-use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
-use League\Flysystem\AdapterInterface;
 use League\Flysystem\Config;
-use League\Flysystem\FileNotFoundException;
-use League\Flysystem\Util;
 use Illuminate\Support\Facades\Log;
 use Tanmo\OOS\OosClient;
+use Tanmo\CtyunOOS\Exceptions\FileNotFoundException;
 
-class OosAdapter extends AbstractAdapter
+class OosAdapter extends AbstractAdapter implements FilesystemAdapter
 {
-    use NotSupportingVisibilityTrait;
-
     /**
      * @var Log debug Mode true|false
      */
@@ -124,9 +122,11 @@ class OosAdapter extends AbstractAdapter
      * @param string $contents
      * @param Config $config Config object
      *
-     * @return array|false false on failure file meta data on success
+     * @return void false on failure file meta data on success
+     *
+     * @throws OosException
      */
-    public function write($path, $contents, Config $config)
+    public function write(string $path, string $contents, Config $config): void
     {
         $object = $this->applyPathPrefix($path);
         $options = $this->getOptions($this->options, $config);
@@ -141,9 +141,10 @@ class OosAdapter extends AbstractAdapter
             $this->client->putObject($this->bucket, $object, $contents, $options);
         } catch (OosException $e) {
             $this->logErr(__FUNCTION__, $e);
-            return false;
+            return ;
         }
-        return $this->normalizeResponse($options, $path);
+
+        $this->normalizeResponse($options, $path);
     }
 
     /**
@@ -155,15 +156,22 @@ class OosAdapter extends AbstractAdapter
      *
      * @return array|false false on failure file meta data on success
      */
-    public function writeStream($path, $resource, Config $config)
+    public function writeStream($path, $resource, Config $config): void
     {
         $options = $this->getOptions($this->options, $config);
         $contents = stream_get_contents($resource);
 
-        return $this->write($path, $contents, $config);
+        $this->write($path, $contents, $config);
     }
 
-    public function writeFile($path, $filePath, Config $config){
+    /**
+     * @param $path
+     * @param $filePath
+     * @param Config $config
+     * @return array|false|string[]
+     */
+    public function writeFile($path, $filePath, Config $config): array|bool
+    {
         $object = $this->applyPathPrefix($path);
         $options = $this->getOptions($this->options, $config);
 
@@ -229,10 +237,10 @@ class OosAdapter extends AbstractAdapter
     /**
      * @param string $path
      * @param string $newpath
-     * @return bool
+     * @return void
      * @throws OosException
      */
-    public function copy($path, $newpath)
+    public function copy($path, $newpath, Config $config): void
     {
         $object = $this->applyPathPrefix($path);
         $newObject = $this->applyPathPrefix($newpath);
@@ -240,16 +248,14 @@ class OosAdapter extends AbstractAdapter
             $this->client->copyObject($this->bucket, $object, $this->bucket, $newObject);
         } catch (OosException $e) {
             $this->logErr(__FUNCTION__, $e);
-            return false;
+            return ;
         }
-
-        return true;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function delete($path)
+    public function delete($path): void
     {
         $bucket = $this->bucket;
         $object = $this->applyPathPrefix($path);
@@ -258,10 +264,10 @@ class OosAdapter extends AbstractAdapter
             $this->client->deleteObject($bucket, $object);
         }catch (OosException $e) {
             $this->logErr(__FUNCTION__, $e);
-            return false;
+            return ;
         }
 
-        return ! $this->has($path);
+        $this->has($path);
     }
 
     /**
@@ -399,14 +405,14 @@ class OosAdapter extends AbstractAdapter
     /**
      * {@inheritdoc}
      */
-    public function setVisibility($path, $visibility)
+    public function setVisibility($path, $visibility): void
     {
         $object = $this->applyPathPrefix($path);
-        $acl = ( $visibility === AdapterInterface::VISIBILITY_PUBLIC ) ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
+        $acl = ( $visibility === Visibility::PUBLIC ) ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
 
         $this->client->putObjectAcl($this->bucket, $object, $acl);
 
-        return compact('visibility');
+//        compact('visibility');
     }
 
     /**
@@ -422,12 +428,12 @@ class OosAdapter extends AbstractAdapter
     /**
      * {@inheritdoc}
      */
-    public function read($path)
+    public function read($path): string
     {
         $result = $this->readObject($path);
         $result['contents'] = (string) $result['raw_contents'];
         unset($result['raw_contents']);
-        return $result;
+        return $result['contents'];
     }
 
     /**
@@ -467,7 +473,7 @@ class OosAdapter extends AbstractAdapter
      * @return array
      * @throws OosException
      */
-    public function listContents($directory = '', $recursive = false)
+    public function listContents($directory = '', $recursive = false): iterable
     {
         $dirObjects = $this->listDirObjects($directory, true);
         $contents = $dirObjects["objects"];
@@ -541,9 +547,9 @@ class OosAdapter extends AbstractAdapter
         }
 
         if ($acl == OosClient::OOS_ACL_TYPE_PUBLIC_READ ){
-            $res['visibility'] = AdapterInterface::VISIBILITY_PUBLIC;
+            $res['visibility'] = Visibility::PUBLIC;
         }else{
-            $res['visibility'] = AdapterInterface::VISIBILITY_PRIVATE;
+            $res['visibility'] = Visibility::PRIVATE;
         }
 
         return $res;
@@ -572,7 +578,7 @@ class OosAdapter extends AbstractAdapter
     {
         $metadata = $this->getVisibility($path);
 
-        return is_array($metadata) && $metadata['visibility'] === AdapterInterface::VISIBILITY_PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
+        return is_array($metadata) && $metadata['visibility'] === Visibility::PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
     }
 
     /**
@@ -634,7 +640,7 @@ class OosAdapter extends AbstractAdapter
         $options = [];
 
         foreach (static::$metaOptions as $option) {
-            if (! $config->has($option)) {
+            if (! $config->get($option)) {
                 continue;
             }
             $options[static::$metaMap[$option]] = $config->get($option);
@@ -644,7 +650,7 @@ class OosAdapter extends AbstractAdapter
             // For local reference
             // $options['visibility'] = $visibility;
             // For external reference
-            $options['x-oss-object-acl'] = $visibility === AdapterInterface::VISIBILITY_PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
+            $options['x-oss-object-acl'] = $visibility === Visibility::PUBLIC ? OosClient::OOS_ACL_TYPE_PUBLIC_READ : OosClient::OOS_ACL_TYPE_PRIVATE;
         }
 
         if ($mimetype = $config->get('mimetype')) {
@@ -666,5 +672,125 @@ class OosAdapter extends AbstractAdapter
             Log::error($fun . ": FAILED");
             Log::error($e->getMessage());
         }
+    }
+
+    /**
+     * @param string $path
+     * @return bool
+     */
+    public function fileExists(string $path): bool
+    {
+        try {
+            return $this->client->doesObjectExist($this->bucket, $path);
+        } catch (OosException $e) {
+            $this->logErr(__FUNCTION__, $e);
+        }
+        return false;
+    }
+
+    /**
+     * @param string $path
+     * @return bool
+     * @throws \League\Flysystem\FilesystemException
+     */
+    public function directoryExists(string $path): bool
+    {
+        return $this->fileExists($path);
+    }
+
+    /**
+     * @param string $path
+     * @throws OosException
+     */
+    public function deleteDirectory(string $path): void
+    {
+        $path = rtrim($this->applyPathPrefix($path), '/').'/';
+        $dirObjects = $this->listDirObjects($path, true);
+
+        if(count($dirObjects['objects']) > 0 ){
+
+            foreach($dirObjects['objects'] as $object)
+            {
+                $objects[] = $object['Key'];
+            }
+
+            try {
+                $this->client->deleteObjects($this->bucket, $objects);
+            } catch (OosException $e) {
+                $this->logErr(__FUNCTION__, $e);
+            }
+        }
+
+        try {
+            $this->client->deleteObject($this->bucket, $dirname);
+        } catch (OosException $e) {
+            $this->logErr(__FUNCTION__, $e);
+        }
+    }
+
+    /**
+     * @param string $path
+     * @param Config $config
+     */
+    public function createDirectory(string $path, Config $config): void
+    {
+        $object = $this->applyPathPrefix($path);
+        $options = $this->getOptionsFromConfig($config);
+
+        try {
+            $this->client->createObjectDir($this->bucket, $object, $options);
+        } catch (OosException $e) {
+            $this->logErr(__FUNCTION__, $e);
+        }
+    }
+
+    /**
+     * @param string $path
+     * @return FileAttributes
+     */
+    public function visibility(string $path): FileAttributes
+    {
+        return new FileAttributes($path, $this->getVisibility($path));
+    }
+
+    /**
+     * @param string $path
+     * @return FileAttributes
+     */
+    public function mimeType(string $path): FileAttributes
+    {
+        return new FileAttributes($path, null, null, null, $this->getMimetype($path));
+    }
+
+    /**
+     * @param string $path
+     * @return FileAttributes
+     */
+    public function lastModified(string $path): FileAttributes
+    {
+        return new FileAttributes($path);
+    }
+
+    /**
+     * @param string $path
+     * @return FileAttributes
+     */
+    public function fileSize(string $path): FileAttributes
+    {
+        $object = $this->getMetadata($path);
+        return new FileAttributes($path, $object['content-length']);
+    }
+
+    /**
+     * @param string $source
+     * @param string $destination
+     * @param Config $config
+     * @throws OosException
+     * @throws \League\Flysystem\FilesystemException
+     */
+    public function move(string $source, string $destination, Config $config): void
+    {
+        $this->copy($source, $destination, $config);
+        $this->delete($source);
     }
 }
